@@ -12,19 +12,25 @@ const fs = require('fs');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Middleware
+// ============================================
+// 1. MIDDLEWARE (zuerst!)
+// ============================================
 app.use(cors());
 app.use(express.json());
 app.use('/uploads', express.static('uploads'));
 
-// Database Connection
+// ============================================
+// 2. DATABASE CONNECTION
+// ============================================
 mongoose.connect(process.env.MONGODB_URI, {
     useNewUrlParser: true,
     useUnifiedTopology: true
 }).then(() => console.log('✅ MongoDB verbunden'))
   .catch(err => console.error('❌ MongoDB Fehler:', err));
 
-// Models
+// ============================================
+// 3. MODELS
+// ============================================
 const UserSchema = new mongoose.Schema({
     email: { type: String, required: true, unique: true },
     password: { type: String, required: true },
@@ -79,7 +85,9 @@ const Progress = mongoose.model('Progress', ProgressSchema);
 const Flashcard = mongoose.model('Flashcard', FlashcardSchema);
 const Session = mongoose.model('Session', SessionSchema);
 
-// Auth Middleware
+// ============================================
+// 4. AUTH MIDDLEWARE
+// ============================================
 const authMiddleware = async (req, res, next) => {
     try {
         const token = req.headers.authorization?.split(' ')[1];
@@ -93,7 +101,9 @@ const authMiddleware = async (req, res, next) => {
     }
 };
 
-// File Upload
+// ============================================
+// 5. FILE UPLOAD CONFIG
+// ============================================
 const storage = multer.diskStorage({
     destination: (req, file, cb) => cb(null, 'uploads/'),
     filename: (req, file, cb) => cb(null, Date.now() + '-' + file.originalname)
@@ -101,20 +111,10 @@ const storage = multer.diskStorage({
 const upload = multer({ storage, limits: { fileSize: 10 * 1024 * 1024 } });
 
 // ============================================
-// 🆕 NEU: FRONTEND SERVEN (Das fehlte!)
-// ============================================
-// Static files aus frontend/ Ordner servieren
-app.use(express.static(path.join(__dirname, '../frontend')));
-
-// Alle anderen Requests auf index.html leiten (Single Page App)
-app.get('*', (req, res) => {
-    res.sendFile(path.join(__dirname, '../frontend/index.html'));
-});
+// 6. API ROUTES (MÜSSEN VOR STATIC SERVING!)
 // ============================================
 
-// ROUTES
-
-// Auth
+// Auth Routes
 app.post('/api/auth/register', async (req, res) => {
     try {
         const { email, password, name, school } = req.body;
@@ -154,7 +154,7 @@ app.post('/api/auth/login', async (req, res) => {
     }
 });
 
-// Progress
+// Progress Routes
 app.get('/api/progress', authMiddleware, async (req, res) => {
     try {
         const progress = await Progress.find({ userId: req.userId });
@@ -180,7 +180,6 @@ app.post('/api/progress', authMiddleware, async (req, res) => {
                 nextReview: new Date(Date.now() + (quality >= 4 ? 1 : 1) * 24 * 60 * 60 * 1000)
             });
         } else {
-            // SM2 Algorithm
             if (quality >= 4) {
                 if (progress.interval === 1) progress.interval = 1;
                 else if (progress.interval === 2) progress.interval = 6;
@@ -207,7 +206,7 @@ app.post('/api/progress', authMiddleware, async (req, res) => {
     }
 });
 
-// Flashcards
+// Flashcards Routes
 app.get('/api/flashcards', authMiddleware, async (req, res) => {
     try {
         const { subject } = req.query;
@@ -233,22 +232,19 @@ app.post('/api/flashcards', authMiddleware, async (req, res) => {
     }
 });
 
-// File Upload & AI Processing
+// Upload Route
 app.post('/api/upload', authMiddleware, upload.single('file'), async (req, res) => {
     try {
         if (!req.file) return res.status(400).json({ error: 'Keine Datei' });
         
         const { subject, types } = req.body;
         
-        // Hier würde die echte KI-Verarbeitung stattfinden
-        // Für Demo simulieren wir die Antwort
         const mockResult = {
             topics: Math.floor(Math.random() * 3) + 1,
             flashcards: Math.floor(Math.random() * 10) + 5,
             quiz: Math.floor(Math.random() * 5) + 3
         };
         
-        // Flashcards erstellen (simuliert)
         const flashcards = [];
         for (let i = 0; i < mockResult.flashcards; i++) {
             flashcards.push({
@@ -267,24 +263,14 @@ app.post('/api/upload', authMiddleware, upload.single('file'), async (req, res) 
     }
 });
 
-// AI Tutor (OpenAI Integration)
+// AI Tutor Route
 app.post('/api/ai/chat', authMiddleware, async (req, res) => {
     try {
         const { message, context } = req.body;
         
-        // OpenAI API Call (simuliert für Demo)
         const mockResponse = {
             response: `Das ist eine interessante Frage zu ${context || 'dem Thema'}. Basierend auf dem sächsischen Lehrplan würde ich sagen...`
         };
-        
-        // Echte Implementierung:
-        // const response = await openai.chat.completions.create({
-        //     model: 'gpt-4',
-        //     messages: [
-        //         { role: 'system', content: 'Du bist ein Abitur-Tutor für Sachsen...' },
-        //         { role: 'user', content: message }
-        //     ]
-        // });
         
         res.json(mockResponse);
     } catch (err) {
@@ -292,7 +278,7 @@ app.post('/api/ai/chat', authMiddleware, async (req, res) => {
     }
 });
 
-// User Profile
+// User Routes
 app.get('/api/user', authMiddleware, async (req, res) => {
     try {
         const user = await User.findById(req.userId).select('-password');
@@ -316,7 +302,7 @@ app.put('/api/user', authMiddleware, async (req, res) => {
     }
 });
 
-// Sessions
+// Session Routes
 app.post('/api/sessions', authMiddleware, async (req, res) => {
     try {
         const session = await Session.create({
@@ -348,7 +334,17 @@ app.put('/api/sessions/:id', authMiddleware, async (req, res) => {
 });
 
 // ============================================
-// 🆕 Server starten (am Ende!)
+// 7. FRONTEND SERVING (NACH API ROUTES!)
+// ============================================
+app.use(express.static(path.join(__dirname, '../frontend')));
+
+// Catch-all route (GANZ AM ENDE!)
+app.get('*', (req, res) => {
+    res.sendFile(path.join(__dirname, '../frontend/index.html'));
+});
+
+// ============================================
+// 8. SERVER START
 // ============================================
 app.listen(PORT, () => {
     console.log(`🚀 Server läuft auf Port ${PORT}`);
