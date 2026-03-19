@@ -12,6 +12,11 @@ const fs = require('fs');
 const CURRICULUM = require('./curriculum');
 const app = express();
 const PORT = process.env.PORT || 3000;
+// ============================================
+// Oben in den Imports hinzufügen:
+// ============================================
+const { Groq } = require('groq-sdk');
+const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
 // ============================================
 // 1. MIDDLEWARE (zuerst!)
@@ -293,67 +298,6 @@ app.post('/api/upload', authMiddleware, upload.single('file'), async (req, res) 
         res.json(mockResult);
     } catch (err) {
         res.status(500).json({ error: err.message });
-    }
-});
-
-// AI Tutor Route (mit Groq API)
-app.post('/api/ai/chat', authMiddleware, async (req, res) => {
-    try {
-        const { message, context, subject } = req.body;
-        
-        // System Prompt mit Lehrplan-Kontext
-        const systemPrompt = `Du bist ein hilfreicher Abitur-Tutor für Sachsen. 
-Erkläre Themen aus dem sächsischen Lehrplan verständlich, präzise und schülergerecht.
-
-Aktueller Kontext: ${context || 'Allgemein'}
-Fach: ${subject || 'Nicht spezifiziert'}
-
-Antworte:
-- Kurz und strukturiert (max. 5 Sätze pro Abschnitt)
-- Mit Beispielen aus dem Lehrplan
-- Auf Deutsch
-- Ermutigend und motivierend`;
-
-        // Groq API Call
-        const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-            method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${process.env.GROQ_API_KEY}`,
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                model: 'llama3-8b-8192',  // Schnell & gut für Deutsch
-                messages: [
-                    { role: 'system', content: systemPrompt },
-                    { role: 'user', content: message }
-                ],
-                temperature: 0.7,
-                max_tokens: 500,
-                top_p: 1,
-                stream: false
-            })
-        });
-        
-        if (!response.ok) {
-            const errorData = await response.json().catch(() => ({}));
-            throw new Error(`Groq API Error: ${response.status} - ${errorData.error?.message || 'Unknown'}`);
-        }
-        
-        const data = await response.json();
-        
-        // Antwort zurückgeben
-        res.json({ 
-            response: data.choices[0]?.message?.content || 'Keine Antwort erhalten',
-            source: 'groq-llama3',
-            model: 'llama3-8b-8192'
-        });
-        
-    } catch (err) {
-        console.error('Groq AI Error:', err);
-        res.status(500).json({ 
-            error: 'AI nicht verfügbar',
-            response: 'Entschuldigung, der AI-Tutor ist gerade nicht erreichbar. Bitte versuche es später nochmal.'
-        });
     }
 });
 
