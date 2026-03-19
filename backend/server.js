@@ -100,6 +100,18 @@ const storage = multer.diskStorage({
 });
 const upload = multer({ storage, limits: { fileSize: 10 * 1024 * 1024 } });
 
+// ============================================
+// 🆕 NEU: FRONTEND SERVEN (Das fehlte!)
+// ============================================
+// Static files aus frontend/ Ordner servieren
+app.use(express.static(path.join(__dirname, '../frontend')));
+
+// Alle anderen Requests auf index.html leiten (Single Page App)
+app.get('*', (req, res) => {
+    res.sendFile(path.join(__dirname, '../frontend/index.html'));
+});
+// ============================================
+
 // ROUTES
 
 // Auth
@@ -335,7 +347,11 @@ app.put('/api/sessions/:id', authMiddleware, async (req, res) => {
     }
 });
 
-// Das MUSS am Ende deiner server.js stehen:
+// ============================================
+// 🆕 Server starten (am Ende!)
+// ============================================
 app.listen(PORT, () => {
     console.log(`🚀 Server läuft auf Port ${PORT}`);
+    console.log(`📱 Frontend: http://localhost:${PORT}`);
+    console.log(`🔌 API: http://localhost:${PORT}/api`);
 });
