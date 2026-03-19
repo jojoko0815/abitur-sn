@@ -2,7 +2,8 @@
 // ============================================
 // API URL - WICHTIG!
 // ============================================
-const API_URL = window.location.origin + '/api';
+window.API_URL = window.API_URL || (window.location.origin + '/api');
+const API_URL = window.API_URL;
 
 // ============================================
 // STATE
