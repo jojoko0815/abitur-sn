@@ -8,7 +8,8 @@ const jwt = require('jsonwebtoken');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
-
+// Curriculum importieren
+const CURRICULUM = require('./curriculum');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
@@ -113,7 +114,39 @@ const upload = multer({ storage, limits: { fileSize: 10 * 1024 * 1024 } });
 // ============================================
 // 6. API ROUTES (MÜSSEN VOR STATIC SERVING!)
 // ============================================
+// ============================================
+// CURRICULUM ROUTES
+// ============================================
 
+// Alle Fächer + Themen
+app.get('/api/curriculum', (req, res) => {
+    res.json(CURRICULUM);
+});
+
+// Einzelnes Fach
+app.get('/api/curriculum/:subject', (req, res) => {
+    const subject = req.params.subject;
+    if (CURRICULUM[subject]) {
+        res.json(CURRICULUM[subject]);
+    } else {
+        res.status(404).json({ error: 'Fach nicht gefunden' });
+    }
+});
+
+// Einzelnes Thema
+app.get('/api/curriculum/:subject/:topicId', (req, res) => {
+    const { subject, topicId } = req.params;
+    if (CURRICULUM[subject]) {
+        const topic = CURRICULUM[subject].topics.find(t => t.id === topicId);
+        if (topic) {
+            res.json(topic);
+        } else {
+            res.status(404).json({ error: 'Thema nicht gefunden' });
+        }
+    } else {
+        res.status(404).json({ error: 'Fach nicht gefunden' });
+    }
+});
 // Auth Routes
 app.post('/api/auth/register', async (req, res) => {
     try {
@@ -263,18 +296,64 @@ app.post('/api/upload', authMiddleware, upload.single('file'), async (req, res) 
     }
 });
 
-// AI Tutor Route
+// AI Tutor Route (mit Groq API)
 app.post('/api/ai/chat', authMiddleware, async (req, res) => {
     try {
-        const { message, context } = req.body;
+        const { message, context, subject } = req.body;
         
-        const mockResponse = {
-            response: `Das ist eine interessante Frage zu ${context || 'dem Thema'}. Basierend auf dem sächsischen Lehrplan würde ich sagen...`
-        };
+        // System Prompt mit Lehrplan-Kontext
+        const systemPrompt = `Du bist ein hilfreicher Abitur-Tutor für Sachsen. 
+Erkläre Themen aus dem sächsischen Lehrplan verständlich, präzise und schülergerecht.
+
+Aktueller Kontext: ${context || 'Allgemein'}
+Fach: ${subject || 'Nicht spezifiziert'}
+
+Antworte:
+- Kurz und strukturiert (max. 5 Sätze pro Abschnitt)
+- Mit Beispielen aus dem Lehrplan
+- Auf Deutsch
+- Ermutigend und motivierend`;
+
+        // Groq API Call
+        const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${process.env.GROQ_API_KEY}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                model: 'llama3-8b-8192',  // Schnell & gut für Deutsch
+                messages: [
+                    { role: 'system', content: systemPrompt },
+                    { role: 'user', content: message }
+                ],
+                temperature: 0.7,
+                max_tokens: 500,
+                top_p: 1,
+                stream: false
+            })
+        });
         
-        res.json(mockResponse);
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            throw new Error(`Groq API Error: ${response.status} - ${errorData.error?.message || 'Unknown'}`);
+        }
+        
+        const data = await response.json();
+        
+        // Antwort zurückgeben
+        res.json({ 
+            response: data.choices[0]?.message?.content || 'Keine Antwort erhalten',
+            source: 'groq-llama3',
+            model: 'llama3-8b-8192'
+        });
+        
     } catch (err) {
-        res.status(500).json({ error: err.message });
+        console.error('Groq AI Error:', err);
+        res.status(500).json({ 
+            error: 'AI nicht verfügbar',
+            response: 'Entschuldigung, der AI-Tutor ist gerade nicht erreichbar. Bitte versuche es später nochmal.'
+        });
     }
 });
 

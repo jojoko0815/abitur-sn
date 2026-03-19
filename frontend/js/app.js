@@ -25,7 +25,6 @@ document.addEventListener('DOMContentLoaded', () => {
 // AUTH FUNCTIONS
 // ============================================
 
-// Check Authentication on Load
 async function checkAuth() {
     if (state.token) {
         try {
@@ -34,6 +33,8 @@ async function checkAuth() {
             });
             if (res.ok) {
                 state.user = await res.json();
+                await loadCurriculum(); // ← NEU: Curriculum laden
+                renderSubjectOverview(); // ← NEU: Fächer anzeigen
                 showApp();
             } else {
                 logout();
@@ -515,5 +516,106 @@ function updateSettingDisplay(id, value) {
     const el = document.getElementById(id);
     if (el) {
         el.textContent = value + ' Min';
+    }
+}
+// ============================================
+// CURRICULUM FUNCTIONS
+// ============================================
+
+let curriculumData = {};
+
+// Curriculum laden
+async function loadCurriculum() {
+    try {
+        const res = await fetch(`${API_URL}/curriculum`);
+        curriculumData = await res.json();
+        return curriculumData;
+    } catch (err) {
+        console.error('Curriculum Error:', err);
+        return {};
+    }
+}
+
+// Fächer anzeigen
+function renderSubjectOverview() {
+    const container = document.getElementById('subjectsOverview');
+    if (!container) return;
+    
+    container.innerHTML = Object.entries(curriculumData).map(([name, data]) => `
+        <div class="subject-card" onclick="openSubject('${name}')">
+            <span class="subject-icon">${data.icon}</span>
+            <h3>${name}</h3>
+            <p>${data.topics.length} Themen</p>
+        </div>
+    `).join('');
+}
+
+// Themen eines Fachs anzeigen
+function loadTopics(subject) {
+    const grid = document.getElementById('topicsGrid');
+    if (!grid || !curriculumData[subject]) return;
+    
+    grid.innerHTML = curriculumData[subject].topics.map(topic => {
+        const prog = state.progress?.[topic.id] || { status: 'unknown' };
+        const statusIcon = prog.status === 'known' ? '🟢' : prog.status === 'unsure' ? '🔴' : '⚪';
+        
+        return `
+            <div class="topic-card">
+                <div class="topic-header">
+                    <span class="badge ${topic.lkOnly ? 'badge-lk' : 'badge-gk'}">
+                        ${topic.lkOnly ? 'LK' : 'GK'}
+                    </span>
+                    <span>${statusIcon}</span>
+                </div>
+                <h3>${topic.title}</h3>
+                <p>${topic.description}</p>
+                <p style="font-size:0.8rem; color:var(--accent)">🎯 ${topic.exam}</p>
+                <div class="knowledge-buttons">
+                    <button class="btn btn-kanich" onclick="updateKnowledge('${topic.id}', true)">✔ Kann ich</button>
+                    <button class="btn btn-unsicher" onclick="updateKnowledge('${topic.id}', false)">❌ Unsicher</button>
+                </div>
+                <button class="btn btn-outline" style="width:100%; margin-top:0.5rem; font-size:0.8rem" onclick="generateTask('${subject}', '${topic.title}')">📝 Aufgabe generieren</button>
+            </div>
+        `;
+    }).join('');
+}
+
+// Fach öffnen
+function openSubject(subjectName) {
+    state.currentSubject = subjectName;
+    
+    const overview = document.getElementById('subjectsOverview');
+    const detail = document.getElementById('subjectDetail');
+    const breadcrumb = document.getElementById('subjectBreadcrumb');
+    
+    if (overview) overview.style.display = 'none';
+    if (detail) detail.style.display = 'block';
+    if (breadcrumb) breadcrumb.innerHTML = ` / <span style="color:var(--text-main)">${subjectName}</span>`;
+    
+    loadTopics(subjectName);
+}
+
+// Wissen updaten
+async function updateKnowledge(topicId, known) {
+    try {
+        const res = await fetch(`${API_URL}/progress`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${state.token}`
+            },
+            body: JSON.stringify({
+                topicId,
+                subject: state.currentSubject,
+                quality: known ? 5 : 1
+            })
+        });
+        
+        if (res.ok) {
+            alert(known ? '✅ Gespeichert!' : '📝 Wird wiederholt');
+            if (state.currentSubject) loadTopics(state.currentSubject);
+        }
+    } catch (err) {
+        alert('Fehler beim Speichern');
     }
 }
