@@ -1,0 +1,512 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="AbiturSN – Intelligente Lernplattform für das sächsische Abitur">
+    <title>AbiturSN – Sachsen | Premium Lernplattform</title>
+    <link rel="stylesheet" href="css/styles.css">
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎓</text></svg>">
+</head>
+<body>
+    <!-- LOGIN SCREEN -->
+    <div id="loginScreen">
+        <div class="login-box">
+            <div class="logo">🎓 AbiturSN</div>
+            <h2>Anmelden</h2>
+            <p class="subtitle">Deine persönliche Lernplattform für das sächsische Abitur</p>
+            
+            <form id="loginForm" onsubmit="handleLogin(event)">
+                <div class="form-group">
+                    <label for="email">E-Mail</label>
+                    <input type="email" id="email" required placeholder="deine@email.de">
+                </div>
+                <div class="form-group">
+                    <label for="password">Passwort</label>
+                    <input type="password" id="password" required placeholder="••••••••">
+                </div>
+                <button type="submit" class="btn btn-primary btn-full">Anmelden</button>
+            </form>
+            
+            <div class="login-divider">oder</div>
+            
+            <button class="btn btn-outline btn-full" onclick="showRegister()">📝 Neues Konto erstellen</button>
+            
+            <p class="login-note">🔒 Deine Daten sind sicher und DSGVO-konform gespeichert</p>
+        </div>
+    </div>
+
+    <!-- REGISTER MODAL -->
+    <div id="registerModal" class="modal-overlay">
+        <div class="modal">
+            <h3>📝 Konto erstellen</h3>
+            <form id="registerForm" onsubmit="handleRegister(event)">
+                <div class="form-group">
+                    <label for="regName">Name</label>
+                    <input type="text" id="regName" required placeholder="Jonas K.">
+                </div>
+                <div class="form-group">
+                    <label for="regEmail">E-Mail</label>
+                    <input type="email" id="regEmail" required placeholder="deine@email.de">
+                </div>
+                <div class="form-group">
+                    <label for="regPassword">Passwort</label>
+                    <input type="password" id="regPassword" required minlength="8" placeholder="Mindestens 8 Zeichen">
+                </div>
+                <div class="form-group">
+                    <label for="regSchool">Schule (optional)</label>
+                    <input type="text" id="regSchool" placeholder="z.B. Sportgymnasium Leipzig">
+                </div>
+                <button type="submit" class="btn btn-primary btn-full">Konto erstellen</button>
+            </form>
+            <button class="btn btn-outline btn-full" style="margin-top: 1rem;" onclick="closeModal('registerModal')">Abbrechen</button>
+        </div>
+    </div>
+
+    <!-- MAIN APP (hidden until login) -->
+    <div id="app" style="display: none;">
+        <!-- Sidebar -->
+        <nav class="sidebar">
+            <div class="brand">
+                <span class="logo-icon">🎓</span>
+                <span class="logo-text">AbiturSN</span>
+                <span class="logo-sub">Sachsen</span>
+            </div>
+            
+            <div class="nav-section">
+                <div class="nav-item active" data-view="dashboard" onclick="switchView('dashboard')">
+                    <span class="nav-icon">📊</span>
+                    <span>Dashboard</span>
+                </div>
+                <div class="nav-item" data-view="subjects" onclick="switchView('subjects')">
+                    <span class="nav-icon">📚</span>
+                    <span>Fächer</span>
+                </div>
+                <div class="nav-item" data-view="sessions" onclick="switchView('sessions')">
+                    <span class="nav-icon">⏱️</span>
+                    <span>Lernplan</span>
+                </div>
+                <div class="nav-item" data-view="flashcards" onclick="switchView('flashcards')">
+                    <span class="nav-icon">🃏</span>
+                    <span>Karteikarten</span>
+                </div>
+                <div class="nav-item" data-view="ai-tutor" onclick="switchView('ai-tutor')">
+                    <span class="nav-icon">🤖</span>
+                    <span>AI Tutor</span>
+                </div>
+            </div>
+            
+            <div class="nav-section">
+                <div class="nav-item" data-view="settings" onclick="switchView('settings')">
+                    <span class="nav-icon">⚙️</span>
+                    <span>Einstellungen</span>
+                </div>
+            </div>
+            
+            <div class="sidebar-footer">
+                <div class="session-timer">
+                    <div class="timer-label">Aktuelle Session</div>
+                    <div class="timer-display" id="sessionTimer">00:00</div>
+                </div>
+                <button class="btn btn-outline btn-sm" onclick="logout()">🚪 Abmelden</button>
+            </div>
+        </nav>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Top Bar -->
+            <header class="top-bar">
+                <div class="breadcrumb" id="breadcrumb">
+                    <span>🏠</span> / <span id="currentPath">Dashboard</span>
+                </div>
+                <div class="user-menu">
+                    <div class="user-info">
+                        <span id="userName">Jonas K.</span>
+                        <span class="user-school" id="userSchool">Sportgymnasium</span>
+                    </div>
+                    <div class="avatar" id="userAvatar">JK</div>
+                </div>
+            </header>
+
+            <!-- Content Area -->
+            <div class="content-area">
+                
+                <!-- DASHBOARD VIEW -->
+                <div id="view-dashboard" class="view-section active">
+                    <div class="stats-grid">
+                        <div class="stat-card">
+                            <div class="stat-icon">🔥</div>
+                            <div class="stat-value" id="streakDisplay">0</div>
+                            <div class="stat-label">Tage Streak</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-icon">📚</div>
+                            <div class="stat-value" id="topicsLearned">0</div>
+                            <div class="stat-label">Themen gelernt</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-icon">⏱️</div>
+                            <div class="stat-value" id="totalHours">0h</div>
+                            <div class="stat-label">Lernzeit</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-icon">📈</div>
+                            <div class="stat-value" id="accuracy">0%</div>
+                            <div class="stat-label">Trefferquote</div>
+                        </div>
+                    </div>
+
+                    <div class="dashboard-section">
+                        <h3>📅 Heute anstehend</h3>
+                        <div class="card" id="todayReviews">
+                            <p class="empty-state">Keine Wiederholungen für heute</p>
+                        </div>
+                    </div>
+
+                    <div class="dashboard-section">
+                        <h3>🚀 Schnellstart</h3>
+                        <div class="quick-start-grid">
+                            <div class="quick-card" onclick="quickStart('Mathematik')">
+                                <span class="quick-icon">📐</span>
+                                <span>Mathe</span>
+                            </div>
+                            <div class="quick-card" onclick="quickStart('Physik')">
+                                <span class="quick-icon">⚡</span>
+                                <span>Physik</span>
+                            </div>
+                            <div class="quick-card" onclick="quickStart('Deutsch')">
+                                <span class="quick-icon">📚</span>
+                                <span>Deutsch</span>
+                            </div>
+                            <div class="quick-card" onclick="quickStart('Englisch')">
+                                <span class="quick-icon">🇬🇧</span>
+                                <span>Englisch</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="dashboard-section">
+                        <h3>📊 Fortschritt</h3>
+                        <div class="progress-card">
+                            <div class="progress-header">
+                                <span>Gesamtfortschritt</span>
+                                <span id="progressPercent">0%</span>
+                            </div>
+                            <div class="progress-bar">
+                                <div class="progress-fill" id="progressBar"></div>
+                            </div>
+                            <div class="progress-details">
+                                <span id="progressCount">0 von 0 Themen</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- SUBJECTS VIEW -->
+                <div id="view-subjects" class="view-section">
+                    <div class="subjects-overview" id="subjectsOverview">
+                        <!-- Injected via JS -->
+                    </div>
+                    
+                    <div class="subject-detail" id="subjectDetail" style="display: none;">
+                        <div class="internal-tabs">
+                            <div class="internal-tab active" data-tab="curriculum" onclick="switchSubjectTab('curriculum')">📚 Lehrplan</div>
+                            <div class="internal-tab" data-tab="upload" onclick="switchSubjectTab('upload')">☁️ PDF Upload</div>
+                            <div class="internal-tab" data-tab="custom" onclick="switchSubjectTab('custom')">✏️ Eigene Themen</div>
+                        </div>
+                        
+                        <div id="tab-curriculum" class="tab-content active">
+                            <div class="topics-grid" id="topicsGrid"></div>
+                        </div>
+                        
+                        <div id="tab-upload" class="tab-content">
+                            <div class="upload-section">
+                                <div class="upload-area" id="dropZone">
+                                    <span class="upload-icon">📄</span>
+                                    <h3>PDF hochladen & analysieren</h3>
+                                    <p>Ziehe deine Datei hierher oder klicke zum Auswählen</p>
+                                    <p class="upload-formats">Unterstützt: .pdf, .txt, .md (max. 10MB)</p>
+                                    <input type="file" id="fileInput" accept=".pdf,.txt,.md" style="display: none;">
+                                    <button class="btn btn-primary" onclick="document.getElementById('fileInput').click()">Datei auswählen</button>
+                                </div>
+                                
+                                <div class="upload-options">
+                                    <h4>Was soll erstellt werden?</h4>
+                                    <div class="option-grid">
+                                        <label class="option-card">
+                                            <input type="checkbox" name="uploadType" value="summary" checked>
+                                            <span class="option-icon">📋</span>
+                                            <span>Zusammenfassung</span>
+                                        </label>
+                                        <label class="option-card">
+                                            <input type="checkbox" name="uploadType" value="flashcards" checked>
+                                            <span class="option-icon">🃏</span>
+                                            <span>Karteikarten</span>
+                                        </label>
+                                        <label class="option-card">
+                                            <input type="checkbox" name="uploadType" value="quiz" checked>
+                                            <span class="option-icon">🧠</span>
+                                            <span>Quiz</span>
+                                        </label>
+                                    </div>
+                                </div>
+                                
+                                <div id="uploadProgress" class="upload-progress" style="display: none;">
+                                    <div class="progress-bar">
+                                        <div class="progress-fill" id="uploadProgressBar"></div>
+                                    </div>
+                                    <p id="uploadStatus">Verarbeite Dokument...</p>
+                                </div>
+                                
+                                <div id="uploadResult" class="upload-result" style="display: none;">
+                                    <h4>✅ Analyse abgeschlossen!</h4>
+                                    <div class="result-stats">
+                                        <div class="result-stat">
+                                            <span class="result-value" id="resultTopics">0</span>
+                                            <span class="result-label">Themen</span>
+                                        </div>
+                                        <div class="result-stat">
+                                            <span class="result-value" id="resultCards">0</span>
+                                            <span class="result-label">Karteikarten</span>
+                                        </div>
+                                        <div class="result-stat">
+                                            <span class="result-value" id="resultQuiz">0</span>
+                                            <span class="result-label">Quizfragen</span>
+                                        </div>
+                                    </div>
+                                    <div class="result-actions">
+                                        <button class="btn btn-primary" onclick="viewFlashcards()">🃏 Karteikarten lernen</button>
+                                        <button class="btn btn-outline" onclick="startQuiz()">🧠 Quiz starten</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div id="tab-custom" class="tab-content">
+                            <div class="custom-topic-section">
+                                <h3>✏️ Eigenes Thema erstellen</h3>
+                                <p>Gib ein Thema ein, das nicht im Lehrplan steht. Die KI erstellt Lernmaterial.</p>
+                                
+                                <div class="custom-form">
+                                    <input type="text" id="customTopicTitle" placeholder="Thema-Titel (z.B. Quantenverschränkung)" class="input-field">
+                                    <textarea id="customTopicDesc" placeholder="Kurze Beschreibung oder Notizen..." class="input-field" rows="4"></textarea>
+                                    <button class="btn btn-primary" onclick="createCustomTopic()">🤖 Mit KI erstellen</button>
+                                </div>
+                                
+                                <div id="customTopicResult" class="custom-result" style="display: none;">
+                                    <!-- Injected via JS -->
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- SESSIONS VIEW -->
+                <div id="view-sessions" class="view-section">
+                    <div class="sessions-header">
+                        <h3>📅 Lernplan</h3>
+                        <button class="btn btn-primary" onclick="openCreateSessionModal()">+ Neue Session</button>
+                    </div>
+                    
+                    <div class="sessions-calendar" id="sessionsCalendar">
+                        <!-- Injected via JS -->
+                    </div>
+                    
+                    <div class="srs-table-section">
+                        <h4>📊 Wiederholungsplan (Spaced Repetition)</h4>
+                        <table class="srs-table">
+                            <thead>
+                                <tr>
+                                    <th>Thema</th>
+                                    <th>Fach</th>
+                                    <th>Nächste Wiederholung</th>
+                                    <th>Intervall</th>
+                                    <th>Status</th>
+                                    <th>Aktion</th>
+                                </tr>
+                            </thead>
+                            <tbody id="srsTableBody">
+                                <!-- Injected via JS -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- FLASHCARDS VIEW -->
+                <div id="view-flashcards" class="view-section">
+                    <div class="flashcards-header">
+                        <h3>🃏 Karteikarten lernen</h3>
+                        <div class="flashcards-filter">
+                            <select id="flashcardSubject" onchange="loadFlashcards()">
+                                <option value="all">Alle Fächer</option>
+                                <!-- Injected via JS -->
+                            </select>
+                        </div>
+                    </div>
+                    
+                    <div class="flashcards-container">
+                        <div class="flashcard-stack" id="flashcardStack">
+                            <div class="flashcard" onclick="flipCard()">
+                                <div class="flashcard-front">
+                                    <p class="flashcard-question" id="cardQuestion">Frage laden...</p>
+                                </div>
+                                <div class="flashcard-back">
+                                    <p class="flashcard-answer" id="cardAnswer">Antwort laden...</p>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="flashcard-controls">
+                            <button class="btn btn-unsicher" onclick="rateCard(1)">😓 Schwer</button>
+                            <button class="btn btn-ok" onclick="rateCard(3)">🤔 Ok</button>
+                            <button class="btn btn-kanich" onclick="rateCard(5)">😊 Leicht</button>
+                        </div>
+                        
+                        <div class="flashcard-progress">
+                            <span id="cardCurrent">1</span> / <span id="cardTotal">10</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- AI TUTOR VIEW -->
+                <div id="view-ai-tutor" class="view-section">
+                    <div class="tutor-container">
+                        <div class="tutor-header">
+                            <h3>🤖 AI Tutor</h3>
+                            <div class="tutor-context">
+                                <span class="context-badge" id="tutorContext">Allgemein</span>
+                            </div>
+                        </div>
+                        
+                        <div class="chat-container" id="chatContainer">
+                            <div class="chat-messages" id="chatMessages">
+                                <div class="message ai-message">
+                                    <div class="message-avatar">🤖</div>
+                                    <div class="message-content">
+                                        <p>Hallo! 👋 Ich bin dein persönlicher Abitur-Tutor für Sachsen.</p>
+                                        <p>Ich kann dir helfen bei:</p>
+                                        <ul>
+                                            <li>📚 Formeln und Konzepte erklären</li>
+                                            <li>✍️ Aufgaben mit Schritt-für-Schritt Lösungen</li>
+                                            <li>📖 Epochen und Literatur analysieren</li>
+                                            <li>❓ Alle deine Fragen beantworten</li>
+                                        </ul>
+                                        <p>Was möchtest du heute lernen?</p>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="chat-input-area">
+                                <input type="text" id="chatInput" placeholder="Stelle deine Frage..." onkeypress="handleChatKey(event)">
+                                <button class="btn btn-primary" onclick="sendChat()">Senden</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- SETTINGS VIEW -->
+                <div id="view-settings" class="view-section">
+                    <div class="settings-container">
+                        <h3>⚙️ Einstellungen</h3>
+                        
+                        <div class="settings-section">
+                            <h4>👤 Profil</h4>
+                            <div class="setting-row">
+                                <label>Name</label>
+                                <input type="text" id="settingsName" class="input-field">
+                            </div>
+                            <div class="setting-row">
+                                <label>E-Mail</label>
+                                <input type="email" id="settingsEmail" class="input-field">
+                            </div>
+                            <div class="setting-row">
+                                <label>Schule</label>
+                                <input type="text" id="settingsSchool" class="input-field">
+                            </div>
+                            <button class="btn btn-primary" onclick="saveProfile()">Speichern</button>
+                        </div>
+                        
+                        <div class="settings-section">
+                            <h4>⏱️ Lern-Einstellungen</h4>
+                            <div class="setting-row">
+                                <label>Pausenwarnung (Minuten)</label>
+                                <input type="range" id="settingsBreakInterval" min="25" max="90" value="50" oninput="document.getElementById('breakVal').textContent = this.value + ' Min'">
+                                <span id="breakVal">50 Min</span>
+                            </div>
+                            <div class="setting-row">
+                                <label>Abwechslungs-Reminder (Minuten)</label>
+                                <input type="range" id="settingsAltInterval" min="15" max="60" value="30" oninput="document.getElementById('altVal').textContent = this.value + ' Min'">
+                                <span id="altVal">30 Min</span>
+                            </div>
+                            <div class="setting-row">
+                                <label>Tägliches Lernziel (Minuten)</label>
+                                <input type="number" id="settingsDailyGoal" value="60" class="input-field" style="width: 100px;">
+                            </div>
+                        </div>
+                        
+                        <div class="settings-section">
+                            <h4>🔒 Datenschutz</h4>
+                            <div class="setting-row">
+                                <label>Alle Daten exportieren</label>
+                                <button class="btn btn-outline" onclick="exportData()">📥 Export</button>
+                            </div>
+                            <div class="setting-row">
+                                <label>Konto löschen</label>
+                                <button class="btn btn-danger" onclick="deleteAccount()">⚠️ Löschen</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </main>
+    </div>
+
+    <!-- MODALS -->
+    <div id="sessionModal" class="modal-overlay">
+        <div class="modal">
+            <h3>📅 Neue Lernsession erstellen</h3>
+            <div class="session-topics" id="sessionTopics">
+                <!-- Injected via JS -->
+            </div>
+            <div class="modal-actions">
+                <button class="btn btn-outline" onclick="closeModal('sessionModal')">Abbrechen</button>
+                <button class="btn btn-primary" onclick="createSession()">Session starten</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="breakModal" class="modal-overlay">
+        <div class="modal warning-modal">
+            <h3>☕ Pause empfohlen!</h3>
+            <p>Du lernst seit <span id="breakTimeDisplay">50</span> Minuten. Eine Pause verbessert die Speicherung!</p>
+            <div class="modal-actions">
+                <button class="btn btn-outline" onclick="closeModal('breakModal')">Weitermachen</button>
+                <button class="btn btn-primary" onclick="takeBreak()">Pause starten</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="topicModal" class="modal-overlay">
+        <div class="modal large-modal">
+            <div class="modal-header">
+                <h3 id="topicModalTitle">Thema</h3>
+                <button class="btn-close" onclick="closeModal('topicModal')">✕</button>
+            </div>
+            <div class="modal-body" id="topicModalContent">
+                <!-- Injected via JS -->
+            </div>
+            <div class="modal-actions">
+                <button class="btn btn-unsicher" onclick="updateKnowledge(false)">❌ Unsicher</button>
+                <button class="btn btn-kanich" onclick="updateKnowledge(true)">✔ Kann ich</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script src="js/api.js"></script>
+    <script src="js/auth.js"></script>
+    <script src="js/srs.js"></script>
+    <script src="js/app.js"></script>
+</body>
+</html>
