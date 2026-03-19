@@ -335,6 +335,7 @@ app.put('/api/sessions/:id', authMiddleware, async (req, res) => {
     }
 });
 
-// Start Server
+// Das MUSS am Ende deiner server.js stehen:
 app.listen(PORT, () => {
     console.log(`🚀 Server läuft auf Port ${PORT}`);
+});
