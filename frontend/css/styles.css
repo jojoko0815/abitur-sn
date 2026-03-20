@@ -961,3 +961,131 @@ input[type="range"] {
 .text-success { color: var(--success); }
 .text-warning { color: var(--warning); }
 .text-danger { color: var(--danger); }
+/* ══════════════════════════════════════════
+   NEUE ELEMENTE (GK/LK, Topics, SRS etc.)
+══════════════════════════════════════════ */
+
+/* GK/LK Toggle in Sidebar */
+.kurs-toggle-section {
+    padding: 1rem 1.5rem 0.6rem;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 0.25rem;
+}
+.kurs-toggle-label {
+    font-size: 0.65rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1.2px;
+    color: var(--text-muted);
+    margin-bottom: 0.4rem;
+}
+.kurs-tabs {
+    display: flex;
+    background: var(--bg-dark);
+    border-radius: 8px;
+    padding: 3px;
+    gap: 3px;
+}
+.kurs-tab {
+    flex: 1;
+    padding: 5px 0;
+    border: none;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--text-muted);
+    font-size: 0.8rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+.kurs-tab.active {
+    background: var(--accent);
+    color: #fff;
+}
+
+/* Topic cards */
+.topic-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 0.5rem;
+}
+.topic-exam {
+    font-size: 0.75rem;
+    color: var(--accent);
+    margin-top: 0.25rem;
+}
+.badge {
+    font-size: 0.65rem;
+    padding: 2px 7px;
+    border-radius: 100px;
+    font-weight: 700;
+}
+.badge-gk {
+    background: rgba(34,197,94,0.12);
+    color: #22c55e;
+    border: 1px solid rgba(34,197,94,0.25);
+}
+.badge-lk {
+    background: rgba(168,85,247,0.12);
+    color: #a855f7;
+    border: 1px solid rgba(168,85,247,0.25);
+}
+.badge-unsicher {
+    background: rgba(239,68,68,0.12);
+    color: #ef4444;
+    margin-left: 0.4rem;
+}
+.subject-progress-bar {
+    height: 3px;
+    background: var(--border);
+    border-radius: 2px;
+    margin-top: 0.5rem;
+    overflow: hidden;
+}
+.formula-box {
+    background: var(--bg-dark);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 0.5rem 0.8rem;
+    font-family: monospace;
+    font-size: 0.85rem;
+    color: var(--accent);
+    margin: 0.5rem 0;
+}
+
+/* Review / SRS */
+.review-item {
+    padding: 0.45rem 0.75rem;
+    border-radius: 6px;
+    background: var(--bg-dark);
+    margin-bottom: 0.35rem;
+    cursor: pointer;
+    font-size: 0.85rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+.review-item:hover { background: var(--border); }
+.srs-table { width:100%; border-collapse:collapse; font-size:.85rem; }
+.srs-table th, .srs-table td { padding:.55rem .75rem; border-bottom:1px solid var(--border); text-align:left; }
+.srs-table th { color:var(--text-muted); font-weight:600; font-size:.7rem; text-transform:uppercase; }
+.srs-table-section { margin-top: 1.5rem; }
+
+/* Session topic labels */
+.session-topic-label {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem;
+    cursor: pointer;
+    border-radius: 6px;
+    font-size: 0.9rem;
+}
+.session-topic-label:hover { background: var(--border); }
+
+/* Drag-over dropzone */
+.drag-over {
+    border-color: var(--accent) !important;
+    background: rgba(124,106,247,0.05) !important;
+}

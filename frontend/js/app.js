@@ -1,621 +1,589 @@
+// frontend/js/app.js  –  komplett überarbeitet
 
-// ============================================
-// API URL - WICHTIG!
-// ============================================
-
-// ============================================
-// STATE
-// ============================================
+// ── State ────────────────────────────────────────────────────────
 let state = {
-    token: localStorage.getItem('token') || null,
-    user: null,
-    currentView: 'dashboard',
-    sessionActive: false,
-    sessionStartTime: null
+    token:          localStorage.getItem('token') || null,
+    user:           null,
+    kurs:           localStorage.getItem('kurs') || 'gk',
+    currentView:    'dashboard',
+    currentSubject: null,
+    curriculum:     {},
+    progress:       [],
+    flashcards:     [],
+    currentCardIdx: 0,
+    sessionActive:  false,
+    sessionStartTime: null,
 };
 
-// ============================================
-// INITIALIZE
-// ============================================
+// ── Init ─────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
     checkAuth();
+    startSessionTimer();
 });
 
-// ============================================
-// AUTH FUNCTIONS
-// ============================================
-
+// ── Auth ─────────────────────────────────────────────────────────
 async function checkAuth() {
-    if (state.token) {
-        try {
-            const res = await fetch(`${API_URL}/user`, {
-                headers: { Authorization: `Bearer ${state.token}` }
-            });
-            if (res.ok) {
-                state.user = await res.json();
-                await loadCurriculum(); // ← NEU: Curriculum laden
-                renderSubjectOverview(); // ← NEU: Fächer anzeigen
-                showApp();
-            } else {
-                logout();
-            }
-        } catch (err) {
-            console.error('Auth Error:', err);
-            logout();
-        }
+    if (!state.token) { showLoginScreen(); return; }
+    try {
+        const res = await fetch(`${API_URL}/user`, {
+            headers: { Authorization: `Bearer ${state.token}` }
+        });
+        if (!res.ok) throw new Error('Unauthorized');
+        state.user = await res.json();
+        if (state.user.kurs) { state.kurs = state.user.kurs; localStorage.setItem('kurs', state.kurs); }
+        await loadCurriculum();
+        showApp();
+    } catch {
+        localStorage.removeItem('token');
+        state.token = null;
+        showLoginScreen();
     }
 }
 
-// Show App (after login)
+function showLoginScreen() {
+    document.getElementById('loginScreen').style.display = 'flex';
+    document.getElementById('app').style.display = 'none';
+}
+
 function showApp() {
     document.getElementById('loginScreen').style.display = 'none';
     document.getElementById('app').style.display = 'flex';
-    
     if (state.user) {
-        document.getElementById('userName').textContent = state.user.name || 'User';
-        document.getElementById('userSchool').textContent = state.user.school || '';
-        const initials = (state.user.name || 'U').split(' ').map(n => n[0]).join('');
-        document.getElementById('userAvatar').textContent = initials.toUpperCase();
+        const name = state.user.name || 'Jonas K.';
+        setText('userName',   name);
+        setText('userSchool', state.user.school || '');
+        const av = document.getElementById('userAvatar');
+        if (av) av.textContent = name.split(' ').map(n=>n[0]).join('').toUpperCase().slice(0,2);
+        // Pre-fill settings
+        const sn = document.getElementById('settingsName');
+        const se = document.getElementById('settingsEmail');
+        const ss = document.getElementById('settingsSchool');
+        if (sn) sn.value = name;
+        if (se) se.value = state.user.email || '';
+        if (ss) ss.value = state.user.school || '';
     }
-    
+    updateKursToggle();
+    populateSubjectDropdown();
     loadDashboard();
 }
 
-// Show Register Modal
-function showRegister() {
-    document.getElementById('registerModal').style.display = 'flex';
-}
+function showRegister()      { document.getElementById('registerModal').style.display = 'flex'; }
+function closeModal(id)      { document.getElementById(id).style.display = 'none'; }
 
-// Close Modal
-function closeModal(modalId) {
-    document.getElementById(modalId).style.display = 'none';
-}
-
-// Handle Login
 async function handleLogin(e) {
     e.preventDefault();
-    
-    const email = document.getElementById('email').value;
-    const password = document.getElementById('password').value;
-    
+    const btn = e.target.querySelector('button[type=submit]');
+    if (btn) { btn.textContent = 'Anmelden…'; btn.disabled = true; }
     try {
-        const res = await fetch(`${API_URL}/auth/login`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email, password })
+        const res  = await fetch(`${API_URL}/auth/login`, {
+            method: 'POST', headers: {'Content-Type':'application/json'},
+            body: JSON.stringify({
+                email:    document.getElementById('email').value,
+                password: document.getElementById('password').value
+            })
         });
-        
         const data = await res.json();
-        
-        if (res.ok) {
-            state.token = data.token;
-            state.user = data.user;
-            localStorage.setItem('token', data.token);
-            showApp();
-        } else {
-            alert(data.error || 'Login fehlgeschlagen');
-        }
+        if (!res.ok) throw new Error(data.error || 'Login fehlgeschlagen');
+        state.token = data.token;
+        state.user  = data.user;
+        localStorage.setItem('token', data.token);
+        await loadCurriculum();
+        showApp();
     } catch (err) {
-        alert('Verbindungsfehler: ' + err.message);
+        alert(err.message);
+        if (btn) { btn.textContent = 'Anmelden'; btn.disabled = false; }
     }
 }
 
-// Handle Register
 async function handleRegister(e) {
     e.preventDefault();
-    
-    const name = document.getElementById('regName').value;
-    const email = document.getElementById('regEmail').value;
-    const password = document.getElementById('regPassword').value;
-    const school = document.getElementById('regSchool').value;
-    
     try {
-        const res = await fetch(`${API_URL}/auth/register`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ name, email, password, school })
+        const res  = await fetch(`${API_URL}/auth/register`, {
+            method: 'POST', headers: {'Content-Type':'application/json'},
+            body: JSON.stringify({
+                name:     document.getElementById('regName').value,
+                email:    document.getElementById('regEmail').value,
+                password: document.getElementById('regPassword').value,
+                school:   document.getElementById('regSchool').value
+            })
         });
-        
         const data = await res.json();
-        
-        if (res.ok) {
-            state.token = data.token;
-            state.user = data.user;
-            localStorage.setItem('token', data.token);
-            closeModal('registerModal');
-            showApp();
-        } else {
-            alert(data.error || 'Registrierung fehlgeschlagen');
-        }
+        if (!res.ok) throw new Error(data.error);
+        state.token = data.token;
+        state.user  = data.user;
+        localStorage.setItem('token', data.token);
+        closeModal('registerModal');
+        await loadCurriculum();
+        showApp();
     } catch (err) {
-        alert('Verbindungsfehler: ' + err.message);
+        alert('Registrierung fehlgeschlagen: ' + err.message);
     }
 }
 
-// Logout
 function logout() {
     localStorage.removeItem('token');
-    state.token = null;
-    state.user = null;
-    document.getElementById('app').style.display = 'none';
-    document.getElementById('loginScreen').style.display = 'flex';
+    state.token = null; state.user = null;
+    showLoginScreen();
 }
 
-// ============================================
-// DASHBOARD
-// ============================================
-async function loadDashboard() {
-    try {
-        const [progressRes, userRes] = await Promise.all([
-            fetch(`${API_URL}/progress`, { headers: { Authorization: `Bearer ${state.token}` } }),
-            fetch(`${API_URL}/user`, { headers: { Authorization: `Bearer ${state.token}` } })
-        ]);
-        
-        const progress = await progressRes.json();
-        const user = await userRes.json();
-        
-        const knownTopics = progress.filter(p => p.status === 'known').length;
-        const totalTopics = 120;
-        const percent = Math.round((knownTopics / totalTopics) * 100);
-        
-        document.getElementById('streakDisplay').textContent = user.progress?.streak || 0;
-        document.getElementById('topicsLearned').textContent = knownTopics;
-        document.getElementById('progressPercent').textContent = `${percent}%`;
-        document.getElementById('progressBar').style.width = `${percent}%`;
-        document.getElementById('progressCount').textContent = `${knownTopics} von ${totalTopics} Themen`;
-    } catch (err) {
-        console.error('Dashboard Error:', err);
-    }
+// ── GK/LK ────────────────────────────────────────────────────────
+function setKurs(kurs) {
+    state.kurs = kurs;
+    localStorage.setItem('kurs', kurs);
+    updateKursToggle();
+    if (state.currentSubject) renderTopics(state.currentSubject);
+    if (state.currentView === 'subjects') renderSubjectOverview();
 }
 
-// ============================================
-// NAVIGATION
-// ============================================
-function switchView(view) {
-    document.querySelectorAll('.view-section').forEach(el => el.classList.remove('active'));
-    document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
-    
-    document.getElementById(`view-${view}`).classList.add('active');
-    document.querySelector(`[data-view="${view}"]`)?.classList.add('active');
-    
-    state.currentView = view;
+function updateKursToggle() {
+    document.querySelectorAll('.kurs-tab').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.kurs === state.kurs);
+    });
 }
 
-// ============================================
-// SESSION TIMER
-// ============================================
-function startSessionTimer() {
-    if (state.sessionActive) {
-        setInterval(() => {
-            const diff = Math.floor((Date.now() - state.sessionStartTime) / 1000);
-            const mins = Math.floor(diff / 60);
-            const secs = diff % 60;
-            document.getElementById('sessionTimer').textContent = 
-                `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-        }, 1000);
-    }
-}
-
-// ============================================
-// QUICK START
-// ============================================
-function quickStart(subject) {
-    switchView('subjects');
-    setTimeout(() => openSubject(subject), 100);
-}
-// ============================================
-// SESSION FUNCTIONS
-// ============================================
-
-function openCreateSessionModal() {
-    const modal = document.getElementById('sessionModal');
-    if (modal) {
-        modal.style.display = 'flex';
-    }
-}
-
-function createSession() {
-    const checkboxes = document.querySelectorAll('.session-topic:checked');
-    if (checkboxes.length === 0) {
-        alert('Bitte wähle mindestens ein Thema.');
-        return;
-    }
-    
-    const topics = Array.from(checkboxes).map(cb => cb.value);
-    
-    // Session erstellen (API Call)
-    api.createSession(topics)
-        .then(() => {
-            closeModal('sessionModal');
-            alert('Session erstellt!');
-            loadSessions();
-        })
-        .catch(err => {
-            alert('Fehler: ' + err.message);
-        });
-}
-
-// ============================================
-// FLASHCARD FUNCTIONS
-// ============================================
-
-let currentFlashcards = [];
-let currentCardIndex = 0;
-
-function flipCard() {
-    const card = document.querySelector('.flashcard');
-    if (card) {
-        card.classList.toggle('flipped');
-    }
-}
-
-async function rateCard(quality) {
-    if (currentFlashcards.length === 0) return;
-    
-    const card = currentFlashcards[currentCardIndex];
-    
-    // Fortschritt speichern
-    try {
-        await api.updateProgress(card.topic || 'flashcard', card.subject, quality);
-    } catch (err) {
-        console.error('Error saving progress:', err);
-    }
-    
-    // Nächste Karte
-    currentCardIndex++;
-    
-    if (currentCardIndex < currentFlashcards.length) {
-        showCard(currentCardIndex);
-    } else {
-        alert('Alle Karten durchgearbeitet! 🎉');
-        loadFlashcards();
-    }
-}
-
-async function showCard(index) {
-    const card = document.querySelector('.flashcard');
-    if (card) {
-        card.classList.remove('flipped');
-    }
-    
-    setTimeout(() => {
-        const flashcard = currentFlashcards[index];
-        const questionEl = document.getElementById('cardQuestion');
-        const answerEl = document.getElementById('cardAnswer');
-        const currentEl = document.getElementById('cardCurrent');
-        const totalEl = document.getElementById('cardTotal');
-        
-        if (questionEl) questionEl.textContent = flashcard.question || 'Frage';
-        if (answerEl) answerEl.textContent = flashcard.answer || 'Antwort';
-        if (currentEl) currentEl.textContent = index + 1;
-        if (totalEl) totalEl.textContent = currentFlashcards.length;
-    }, 300);
-}
-
-async function loadFlashcards() {
-    const subjectSelect = document.getElementById('flashcardSubject');
-    const subject = subjectSelect ? subjectSelect.value : 'all';
-    
-    try {
-        currentFlashcards = await api.getFlashcards(subject);
-        currentCardIndex = 0;
-        
-        if (currentFlashcards.length > 0) {
-            showCard(0);
-        } else {
-            const questionEl = document.getElementById('cardQuestion');
-            const answerEl = document.getElementById('cardAnswer');
-            if (questionEl) questionEl.textContent = 'Keine Karteikarten vorhanden';
-            if (answerEl) answerEl.textContent = 'Lade erst Material hoch oder erstelle eigene Themen';
-        }
-    } catch (err) {
-        console.error('Error loading flashcards:', err);
-    }
-}
-
-// ============================================
-// CHAT FUNCTIONS
-// ============================================
-
-function handleChatKey(e) {
-    if (e.key === 'Enter') {
-        sendChat();
-    }
-}
-
-async function sendChat() {
-    const input = document.getElementById('chatInput');
-    const message = input ? input.value.trim() : '';
-    
-    if (!message) return;
-    
-    const chatMessages = document.getElementById('chatMessages');
-    if (!chatMessages) return;
-    
-    // User message anzeigen
-    chatMessages.innerHTML += `
-        <div class="message user-message">
-            <div class="message-content">
-                <p>${message}</p>
-            </div>
-        </div>
-    `;
-    
-    if (input) input.value = '';
-    chatMessages.scrollTop = chatMessages.scrollHeight;
-    
-    // AI response
-    try {
-        const data = await api.chatWithAI(message, state.currentSubject || 'Allgemein');
-        
-        chatMessages.innerHTML += `
-            <div class="message ai-message">
-                <div class="message-avatar">🤖</div>
-                <div class="message-content">
-                    <p>${data.response}</p>
-                </div>
-            </div>
-        `;
-        
-        chatMessages.scrollTop = chatMessages.scrollHeight;
-    } catch (err) {
-        chatMessages.innerHTML += `
-            <div class="message ai-message">
-                <div class="message-content">
-                    <p class="text-danger">Fehler bei der Verbindung</p>
-                </div>
-            </div>
-        `;
-    }
-}
-
-// ============================================
-// SUBJECT FUNCTIONS
-// ============================================
-
-function openSubject(subjectName) {
-    state.currentSubject = subjectName;
-    
-    const overview = document.getElementById('subjectsOverview');
-    const detail = document.getElementById('subjectDetail');
-    const breadcrumb = document.getElementById('subjectBreadcrumb');
-    
-    if (overview) overview.style.display = 'none';
-    if (detail) detail.style.display = 'block';
-    if (breadcrumb) breadcrumb.innerHTML = ` / <span style="color:var(--text-main)">${subjectName}</span>`;
-    
-    loadTopics(subjectName);
-}
-
-function switchSubjectTab(tabName) {
-    // Tabs aktualisieren
-    document.querySelectorAll('.internal-tab').forEach(t => t.classList.remove('active'));
-    document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
-    
-    const activeTab = document.querySelector(`[data-tab="${tabName}"]`);
-    const activeContent = document.getElementById(`tab-${tabName}`);
-    
-    if (activeTab) activeTab.classList.add('active');
-    if (activeContent) activeContent.classList.add('active');
-}
-
-function loadTopics(subject) {
-    const grid = document.getElementById('topicsGrid');
-    if (!grid) return;
-    
-    grid.innerHTML = '<p>Lade Themen...</p>';
-    
-    // Hier würdest du normalerweise Topics von der API laden
-    // Für jetzt nur Dummy-Daten
-    setTimeout(() => {
-        grid.innerHTML = `
-            <div class="topic-card">
-                <h3>Thema 1 in ${subject}</h3>
-                <p>Beschreibung folgt...</p>
-                <div class="knowledge-buttons">
-                    <button class="btn btn-kanich" onclick="alert('Gespeichert!')">✔ Kann ich</button>
-                    <button class="btn btn-unsicher" onclick="alert('Wird wiederholt!')">❌ Unsicher</button>
-                </div>
-            </div>
-        `;
-    }, 500);
-}
-
-function loadSubjects() {
-    const container = document.getElementById('subjectsOverview');
-    if (!container) return;
-    
-    const subjects = ['Mathematik', 'Physik', 'Chemie', 'Biologie', 'Deutsch', 'Englisch', 'Geschichte', 'Geographie', 'Gemeinschaftskunde', 'Ethik'];
-    
-    container.innerHTML = subjects.map(subject => `
-        <div class="subject-card" onclick="openSubject('${subject}')">
-            <span class="subject-icon">📚</span>
-            <h3>${subject}</h3>
-            <p>Themen laden...</p>
-        </div>
-    `).join('');
-}
-
-// ============================================
-// SESSIONS & SETTINGS
-// ============================================
-
-function loadSessions() {
-    // Sessions laden (wird später implementiert)
-    console.log('Sessions laden...');
-}
-
-function saveProfile() {
-    const name = document.getElementById('settingsName')?.value;
-    const email = document.getElementById('settingsEmail')?.value;
-    const school = document.getElementById('settingsSchool')?.value;
-    
-    api.updateUser({ name, email, school })
-        .then(() => {
-            alert('Profil gespeichert!');
-            state.user = { ...state.user, name, email, school };
-        })
-        .catch(err => {
-            alert('Fehler: ' + err.message);
-        });
-}
-
-function exportData() {
-    const data = {
-        user: state.user,
-        timestamp: new Date().toISOString()
-    };
-    
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `abitur-sn-export-${new Date().toISOString().split('T')[0]}.json`;
-    a.click();
-}
-
-function deleteAccount() {
-    if (confirm('⚠️ Wirklich löschen? Alle Daten gehen verloren!')) {
-        logout();
-    }
-}
-
-function createCustomTopic() {
-    const title = document.getElementById('customTopicTitle')?.value;
-    const desc = document.getElementById('customTopicDesc')?.value;
-    
-    if (!title) {
-        alert('Bitte Thema eingeben');
-        return;
-    }
-    
-    const resultDiv = document.getElementById('customTopicResult');
-    if (resultDiv) {
-        resultDiv.style.display = 'block';
-        resultDiv.innerHTML = `
-            <h4>✨ Thema wurde erstellt!</h4>
-            <div class="card" style="background: var(--bg-dark); margin-top: 1rem;">
-                <h4>${title}</h4>
-                <p>${desc || 'KI-generierte Zusammenfassung...'}</p>
-                <button class="btn btn-outline" style="margin-top: 0.5rem;" onclick="alert('Zum Lernplan hinzugefügt!')">➕ Zum Plan hinzufügen</button>
-            </div>
-        `;
-    }
-}
-
-function viewFlashcards() {
-    switchView('flashcards');
-    loadFlashcards();
-}
-
-function startQuiz() {
-    alert('Quiz wird gestartet... (Feature kommt bald!)');
-}
-
-function updateSettingDisplay(id, value) {
-    const el = document.getElementById(id);
-    if (el) {
-        el.textContent = value + ' Min';
-    }
-}
-// ============================================
-// CURRICULUM FUNCTIONS
-// ============================================
-
-let curriculumData = {};
-
-// Curriculum laden
+// ── Curriculum ───────────────────────────────────────────────────
 async function loadCurriculum() {
     try {
         const res = await fetch(`${API_URL}/curriculum`);
-        curriculumData = await res.json();
-        return curriculumData;
-    } catch (err) {
-        console.error('Curriculum Error:', err);
-        return {};
-    }
+        if (res.ok) state.curriculum = await res.json();
+    } catch { state.curriculum = {}; }
 }
 
-// Fächer anzeigen
+function getTopics(subjectData) {
+    const gk = subjectData.topicsGK || subjectData.topics || [];
+    const lk = subjectData.topicsLK || [];
+    return state.kurs === 'lk' ? [...gk, ...lk] : gk;
+}
+
+// ── Dashboard ────────────────────────────────────────────────────
+async function loadDashboard() {
+    try {
+        const [progressRes, userRes] = await Promise.all([
+            fetch(`${API_URL}/progress`,   { headers: { Authorization: `Bearer ${state.token}` } }),
+            fetch(`${API_URL}/user`,        { headers: { Authorization: `Bearer ${state.token}` } })
+        ]);
+        const progress = await progressRes.json();
+        const user     = await userRes.json();
+        state.progress = Array.isArray(progress) ? progress : [];
+        state.user     = user;
+
+        const known = state.progress.filter(p => p.status === 'known').length;
+        const total = Object.values(state.curriculum).reduce((acc, s) => acc + getTopics(s).length, 0) || 120;
+        const pct   = Math.round((known / total) * 100);
+
+        setText('streakDisplay',   user.progress?.streak || 0);
+        setText('topicsLearned',   known);
+        setText('totalHours',      (user.progress?.totalHours || 0) + 'h');
+        setText('accuracy',        state.progress.length > 0
+            ? Math.round(known / state.progress.length * 100) + '%' : '0%');
+        setText('progressPercent', pct + '%');
+        setText('progressCount',   `${known} von ${total} Themen`);
+        const bar = document.getElementById('progressBar');
+        if (bar) bar.style.width = pct + '%';
+
+        // Heutige Wiederholungen
+        const due = state.progress.filter(p => p.nextReview && new Date(p.nextReview) <= new Date());
+        const dueEl = document.getElementById('todayReviews');
+        if (dueEl) {
+            dueEl.innerHTML = due.length === 0
+                ? '<p class="empty-state">✅ Keine Wiederholungen – weiter so!</p>'
+                : due.slice(0,5).map(p =>
+                    `<div class="review-item" onclick="quickStart('${p.subject}')">
+                        📌 <strong>${p.subject}</strong> – ${p.topicId}
+                        <span class="badge badge-unsicher">Wiederholen</span>
+                    </div>`).join('');
+        }
+        renderSRSTable(state.progress.slice(0,10));
+    } catch (err) { console.error('Dashboard Error:', err); }
+}
+
+function renderSRSTable(progress) {
+    const tbody = document.getElementById('srsTableBody');
+    if (!tbody) return;
+    tbody.innerHTML = progress.length === 0
+        ? '<tr><td colspan="6" class="empty-state">Noch keine Themen geübt</td></tr>'
+        : progress.map(p => `<tr>
+            <td>${p.topicId}</td>
+            <td>${p.subject}</td>
+            <td>${p.nextReview ? new Date(p.nextReview).toLocaleDateString('de-DE') : '–'}</td>
+            <td>${p.interval || 1} Tage</td>
+            <td>${p.status === 'known' ? '🟢 Bekannt' : p.status === 'unsure' ? '🔴 Unsicher' : '⚪ Unbekannt'}</td>
+            <td><button class="btn btn-outline btn-sm" onclick="quickStart('${p.subject}')">↻</button></td>
+        </tr>`).join('');
+}
+
+// ── Navigation ───────────────────────────────────────────────────
+function switchView(view) {
+    document.querySelectorAll('.view-section').forEach(el => el.classList.remove('active'));
+    document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
+    document.getElementById(`view-${view}`)?.classList.add('active');
+    document.querySelector(`[data-view="${view}"]`)?.classList.add('active');
+    state.currentView = view;
+    const labels = { dashboard:'Dashboard', subjects:'Fächer', sessions:'Lernplan', flashcards:'Karteikarten', 'ai-tutor':'AI Tutor', settings:'Einstellungen' };
+    setText('currentPath', labels[view] || view);
+    if (view === 'dashboard')  loadDashboard();
+    if (view === 'subjects')   renderSubjectOverview();
+    if (view === 'flashcards') loadFlashcards();
+}
+
+function quickStart(subject) {
+    switchView('subjects');
+    setTimeout(() => openSubject(subject), 50);
+}
+
+// ── Subjects ─────────────────────────────────────────────────────
 function renderSubjectOverview() {
     const container = document.getElementById('subjectsOverview');
     if (!container) return;
-    
-    container.innerHTML = Object.entries(curriculumData).map(([name, data]) => `
-        <div class="subject-card" onclick="openSubject('${name}')">
+    const entries = Object.entries(state.curriculum);
+    if (!entries.length) { container.innerHTML = '<p class="empty-state">Fächer werden geladen…</p>'; return; }
+    container.innerHTML = entries.map(([name, data]) => {
+        const topics = getTopics(data);
+        const known  = state.progress.filter(p => p.subject === name && p.status === 'known').length;
+        const pct    = topics.length ? Math.round(known / topics.length * 100) : 0;
+        return `<div class="subject-card" onclick="openSubject('${name}')">
             <span class="subject-icon">${data.icon}</span>
             <h3>${name}</h3>
-            <p>${data.topics.length} Themen</p>
-        </div>
-    `).join('');
-}
-
-// Themen eines Fachs anzeigen
-function loadTopics(subject) {
-    const grid = document.getElementById('topicsGrid');
-    if (!grid || !curriculumData[subject]) return;
-    
-    grid.innerHTML = curriculumData[subject].topics.map(topic => {
-        const prog = state.progress?.[topic.id] || { status: 'unknown' };
-        const statusIcon = prog.status === 'known' ? '🟢' : prog.status === 'unsure' ? '🔴' : '⚪';
-        
-        return `
-            <div class="topic-card">
-                <div class="topic-header">
-                    <span class="badge ${topic.lkOnly ? 'badge-lk' : 'badge-gk'}">
-                        ${topic.lkOnly ? 'LK' : 'GK'}
-                    </span>
-                    <span>${statusIcon}</span>
-                </div>
-                <h3>${topic.title}</h3>
-                <p>${topic.description}</p>
-                <p style="font-size:0.8rem; color:var(--accent)">🎯 ${topic.exam}</p>
-                <div class="knowledge-buttons">
-                    <button class="btn btn-kanich" onclick="updateKnowledge('${topic.id}', true)">✔ Kann ich</button>
-                    <button class="btn btn-unsicher" onclick="updateKnowledge('${topic.id}', false)">❌ Unsicher</button>
-                </div>
-                <button class="btn btn-outline" style="width:100%; margin-top:0.5rem; font-size:0.8rem" onclick="generateTask('${subject}', '${topic.title}')">📝 Aufgabe generieren</button>
-            </div>
-        `;
+            <p>${topics.length} Themen · ${known} bekannt</p>
+            <div class="subject-progress-bar"><div style="width:${pct}%;background:var(--accent);height:3px;border-radius:2px"></div></div>
+        </div>`;
     }).join('');
 }
 
-// Fach öffnen
 function openSubject(subjectName) {
     state.currentSubject = subjectName;
-    
-    const overview = document.getElementById('subjectsOverview');
-    const detail = document.getElementById('subjectDetail');
-    const breadcrumb = document.getElementById('subjectBreadcrumb');
-    
-    if (overview) overview.style.display = 'none';
-    if (detail) detail.style.display = 'block';
-    if (breadcrumb) breadcrumb.innerHTML = ` / <span style="color:var(--text-main)">${subjectName}</span>`;
-    
-    loadTopics(subjectName);
+    document.getElementById('subjectsOverview').style.display = 'none';
+    document.getElementById('subjectDetail').style.display   = 'block';
+    const bc = document.getElementById('subjectBreadcrumb');
+    if (bc) bc.innerHTML = ` / <span style="color:var(--accent)">${subjectName}</span>`;
+    setText('currentPath', 'Fächer / ' + subjectName);
+    switchSubjectTab('curriculum');
+    renderTopics(subjectName);
 }
 
-// Wissen updaten
-async function updateKnowledge(topicId, known) {
+function switchSubjectTab(tab) {
+    document.querySelectorAll('.internal-tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+    document.querySelector(`[data-tab="${tab}"]`)?.classList.add('active');
+    document.getElementById(`tab-${tab}`)?.classList.add('active');
+}
+
+function renderTopics(subjectName) {
+    const grid = document.getElementById('topicsGrid');
+    if (!grid) return;
+    const data   = state.curriculum[subjectName];
+    if (!data)   { grid.innerHTML = '<p>Fach nicht gefunden</p>'; return; }
+    const topics = getTopics(data);
+    if (!topics.length) { grid.innerHTML = '<p class="empty-state">Keine Themen gefunden</p>'; return; }
+    grid.innerHTML = topics.map(t => {
+        const prog   = state.progress.find(p => p.topicId === t.id) || { status:'unknown' };
+        const icon   = prog.status === 'known' ? '🟢' : prog.status === 'unsure' ? '🔴' : '⚪';
+        const badge  = t.lkOnly
+            ? '<span class="badge badge-lk">LK</span>'
+            : '<span class="badge badge-gk">GK</span>';
+        return `<div class="topic-card">
+            <div class="topic-header">${badge}<span>${icon}</span></div>
+            <h3>${t.title}</h3>
+            <p>${t.desc || t.description || ''}</p>
+            ${t.exam ? `<p class="topic-exam">🎯 ${t.exam}</p>` : ''}
+            <div class="knowledge-buttons">
+                <button class="btn btn-kanich"   onclick="markTopic('${t.id}','${subjectName}',5)">✔ Kann ich</button>
+                <button class="btn btn-unsicher" onclick="markTopic('${t.id}','${subjectName}',1)">❌ Unsicher</button>
+            </div>
+            <button class="btn btn-outline" style="width:100%;margin-top:.5rem;font-size:.8rem"
+                onclick="generateTask('${subjectName}','${t.title.replace(/'/g,"\\'").replace(/"/g,'\\"')}')">
+                📝 Aufgabe generieren
+            </button>
+        </div>`;
+    }).join('');
+}
+
+async function markTopic(topicId, subject, quality) {
     try {
-        const res = await fetch(`${API_URL}/progress`, {
+        await fetch(`${API_URL}/progress`, {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${state.token}`
-            },
+            headers: { 'Content-Type':'application/json', Authorization: `Bearer ${state.token}` },
+            body: JSON.stringify({ topicId, subject, quality })
+        });
+        const res = await fetch(`${API_URL}/progress`, { headers: { Authorization: `Bearer ${state.token}` } });
+        state.progress = await res.json();
+        renderTopics(subject);
+    } catch (err) { alert('Fehler: ' + err.message); }
+}
+
+// ── Generate Task ────────────────────────────────────────────────
+async function generateTask(subject, topic) {
+    const modal   = document.getElementById('topicModal');
+    const titleEl = document.getElementById('topicModalTitle');
+    const bodyEl  = document.getElementById('topicModalContent');
+    if (!modal) return;
+    if (titleEl) titleEl.textContent = `📝 ${topic}`;
+    if (bodyEl)  bodyEl.innerHTML = '<p>🤖 Aufgabe wird generiert…</p>';
+    modal.style.display = 'flex';
+    try {
+        const res  = await fetch(`${API_URL}/ai/task`, {
+            method: 'POST',
+            headers: { 'Content-Type':'application/json', Authorization: `Bearer ${state.token}` },
+            body: JSON.stringify({ subject, topic, difficulty:'mittel', kurs: state.kurs.toUpperCase() })
+        });
+        const task = await res.json();
+        if (!res.ok) throw new Error(task.error);
+
+        const qHtml    = (task.question||topic).replace(/\*\*(.*?)\*\*/g,'<strong>$1</strong>');
+        const formula  = task.formula?.trim() ? `<div class="formula-box">${task.formula}</div>` : '';
+        const inputs   = (task.steps||[]).map(s =>
+            `<div style="margin:.5rem 0">
+                <div style="font-size:.8rem;color:var(--accent);margin-bottom:3px">${s.label}</div>
+                <input type="text" id="task-inp-${s.key}" placeholder="${s.placeholder}"
+                    class="input-field" style="width:100%" autocomplete="off">
+            </div>`).join('');
+
+        bodyEl.innerHTML = `
+            <p style="margin-bottom:.8rem">${qHtml}</p>
+            ${formula}
+            ${inputs}
+            <button class="btn btn-primary" style="margin-top:.8rem" onclick="checkTaskAnswer(${JSON.stringify(task).replace(/'/g,"&#39;")})">✓ Prüfen</button>
+            <div id="task-fb" style="margin-top:.5rem"></div>
+            ${task.hint ? `<p style="margin-top:.5rem;color:var(--text-muted);font-size:.85rem">💡 ${task.hint}</p>` : ''}`;
+    } catch {
+        if (bodyEl) bodyEl.innerHTML = `<p>Aufgabe zu <strong>${topic}</strong> konnte nicht geladen werden.<br><small>Bitte versuche es erneut oder stelle dem AI-Tutor deine Frage.</small></p>`;
+    }
+}
+
+function checkTaskAnswer(task) {
+    const fb = document.getElementById('task-fb');
+    if (!fb) return;
+    let allOk = true;
+    (task.steps||[]).forEach(s => {
+        const inp = document.getElementById(`task-inp-${s.key}`);
+        if (!inp) return;
+        const val = inp.value.trim().toLowerCase().replace(/\s+/g,'').replace(/,/g,'.');
+        const acc = (task.answers?.[s.key]||[]).map(a => a.toLowerCase().replace(/\s+/g,'').replace(/,/g,'.'));
+        const ok  = !acc.length || acc.some(a => val===a || val.includes(a));
+        inp.style.borderColor = ok ? '#22c55e' : '#ef4444';
+        if (!ok) allOk = false;
+    });
+    const sol = (task.solution||[]).map(s=>`<strong>${s.label}:</strong> ${s.text}`).join('<br>');
+    fb.innerHTML = allOk
+        ? '<p style="color:#22c55e;margin-top:.5rem">✅ Richtig! Sehr gut!</p>'
+        : `<p style="color:#ef4444;margin-top:.5rem">✗ Nicht ganz. <button class="btn btn-outline" style="font-size:.75rem;margin-left:.5rem" onclick="document.getElementById('task-sol').style.display='block'">Lösung anzeigen</button></p>
+           <div id="task-sol" style="display:none;margin-top:.5rem;font-size:.85rem;color:var(--text-muted)">${sol}</div>`;
+}
+
+// ── Flashcards ───────────────────────────────────────────────────
+function populateSubjectDropdown() {
+    const sel = document.getElementById('flashcardSubject');
+    if (!sel) return;
+    sel.innerHTML = '<option value="all">Alle Fächer</option>' +
+        Object.keys(state.curriculum).map(n => `<option value="${n}">${n}</option>`).join('');
+}
+
+async function loadFlashcards() {
+    const subject = document.getElementById('flashcardSubject')?.value || 'all';
+    try {
+        const res = await fetch(`${API_URL}/flashcards?subject=${subject}`, {
+            headers: { Authorization: `Bearer ${state.token}` }
+        });
+        state.flashcards    = await res.json();
+        state.currentCardIdx = 0;
+        state.flashcards.length ? showCard(0) : (setText('cardQuestion','Keine Karteikarten'), setText('cardAnswer','Lade Material hoch!'));
+    } catch (err) { console.error(err); }
+}
+
+function showCard(i) {
+    const c = state.flashcards[i];
+    if (!c) return;
+    document.querySelector('.flashcard')?.classList.remove('flipped');
+    setTimeout(() => {
+        setText('cardQuestion', c.question || 'Frage');
+        setText('cardAnswer',   c.answer   || 'Antwort');
+        setText('cardCurrent',  i + 1);
+        setText('cardTotal',    state.flashcards.length);
+    }, 150);
+}
+
+function flipCard()  { document.querySelector('.flashcard')?.classList.toggle('flipped'); }
+
+async function rateCard(quality) {
+    const c = state.flashcards[state.currentCardIdx];
+    if (c) {
+        await fetch(`${API_URL}/progress`, {
+            method:'POST', headers:{'Content-Type':'application/json', Authorization:`Bearer ${state.token}`},
+            body: JSON.stringify({ topicId: c.topic||'flashcard', subject: c.subject||'Allgemein', quality })
+        }).catch(()=>{});
+    }
+    state.currentCardIdx++;
+    if (state.currentCardIdx < state.flashcards.length) showCard(state.currentCardIdx);
+    else { alert('🎉 Alle Karten durch!'); state.currentCardIdx = 0; loadFlashcards(); }
+}
+
+function viewFlashcards() { switchView('flashcards'); loadFlashcards(); }
+function startQuiz()      { alert('Quiz-Feature kommt bald!'); }
+
+// ── File Upload ──────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', () => {
+    const fileInput = document.getElementById('fileInput');
+    const dropZone  = document.getElementById('dropZone');
+    if (fileInput) fileInput.addEventListener('change', e => handleFileUpload(e.target.files[0]));
+    if (dropZone) {
+        dropZone.addEventListener('dragover',  e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+        dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+        dropZone.addEventListener('drop', e => {
+            e.preventDefault(); dropZone.classList.remove('drag-over');
+            if (e.dataTransfer.files[0]) handleFileUpload(e.dataTransfer.files[0]);
+        });
+    }
+});
+
+async function handleFileUpload(file) {
+    if (!file) return;
+    const prog = document.getElementById('uploadProgress');
+    const bar  = document.getElementById('uploadProgressBar');
+    const stat = document.getElementById('uploadStatus');
+    const res  = document.getElementById('uploadResult');
+    if (prog) prog.style.display = 'block';
+    if (res)  res.style.display  = 'none';
+    if (stat) stat.textContent = 'Hochladen…';
+    if (bar)  bar.style.width = '30%';
+    const fd = new FormData();
+    fd.append('file', file);
+    fd.append('subject', state.currentSubject || 'Allgemein');
+    try {
+        if (bar) bar.style.width = '70%';
+        if (stat) stat.textContent = 'Wird analysiert…';
+        const r    = await fetch(`${API_URL}/upload`, {
+            method:'POST', headers:{ Authorization:`Bearer ${state.token}` }, body: fd
+        });
+        const data = await r.json();
+        if (bar) bar.style.width = '100%';
+        setTimeout(() => {
+            if (prog) prog.style.display = 'none';
+            if (res)  res.style.display  = 'block';
+            setText('resultTopics', data.topics    || 0);
+            setText('resultCards',  data.flashcards || 0);
+            setText('resultQuiz',   data.quiz       || 0);
+        }, 400);
+    } catch (err) {
+        if (prog) prog.style.display = 'none';
+        alert('Upload-Fehler: ' + err.message);
+    }
+}
+
+// ── AI Chat ──────────────────────────────────────────────────────
+function handleChatKey(e) { if (e.key === 'Enter') sendChat(); }
+
+async function sendChat() {
+    const input = document.getElementById('chatInput');
+    const msg   = input?.value.trim();
+    if (!msg) return;
+    const msgs = document.getElementById('chatMessages');
+    if (!msgs) return;
+    msgs.innerHTML += `<div class="message user-message"><div class="message-content"><p>${escHtml(msg)}</p></div></div>`;
+    input.value = '';
+    msgs.scrollTop = msgs.scrollHeight;
+    const tid = 'typing-' + Date.now();
+    msgs.innerHTML += `<div class="message ai-message" id="${tid}"><div class="message-avatar">🤖</div><div class="message-content"><p>…</p></div></div>`;
+    msgs.scrollTop = msgs.scrollHeight;
+    try {
+        const res  = await fetch(`${API_URL}/ai/chat`, {
+            method:'POST', headers:{'Content-Type':'application/json', Authorization:`Bearer ${state.token}`},
+            body: JSON.stringify({ message: msg, context: state.currentSubject || 'Allgemein' })
+        });
+        const data = await res.json();
+        document.getElementById(tid)?.remove();
+        if (!res.ok) throw new Error(data.error);
+        msgs.innerHTML += `
+            <div class="message ai-message">
+                <div class="message-avatar">🤖</div>
+                <div class="message-content"><p>${fmtAI(data.response || '')}</p></div>
+            </div>`;
+    } catch (err) {
+        document.getElementById(tid)?.remove();
+        msgs.innerHTML += `<div class="message ai-message"><div class="message-avatar">🤖</div><div class="message-content"><p class="text-danger">Fehler: ${escHtml(err.message)}</p></div></div>`;
+    }
+    msgs.scrollTop = msgs.scrollHeight;
+}
+
+// ── Sessions ─────────────────────────────────────────────────────
+function startSessionTimer() {
+    setInterval(() => {
+        if (!state.sessionActive) return;
+        const s = Math.floor((Date.now() - state.sessionStartTime) / 1000);
+        setText('sessionTimer', `${String(Math.floor(s/60)).padStart(2,'0')}:${String(s%60).padStart(2,'0')}`);
+    }, 1000);
+}
+
+function openCreateSessionModal() {
+    const modal = document.getElementById('sessionModal');
+    if (!modal) return;
+    const c = document.getElementById('sessionTopics');
+    if (c) c.innerHTML = Object.entries(state.curriculum).map(([n,d]) =>
+        `<label class="session-topic-label"><input type="checkbox" class="session-topic" value="${n}"> ${d.icon} ${n}</label>`
+    ).join('');
+    modal.style.display = 'flex';
+}
+
+async function createSession() {
+    const checked = document.querySelectorAll('.session-topic:checked');
+    if (!checked.length) { alert('Bitte mindestens ein Fach wählen.'); return; }
+    const topics = Array.from(checked).map(cb => cb.value);
+    try {
+        await fetch(`${API_URL}/sessions`, {
+            method:'POST', headers:{'Content-Type':'application/json', Authorization:`Bearer ${state.token}`},
+            body: JSON.stringify({ topics })
+        });
+        state.sessionActive    = true;
+        state.sessionStartTime = Date.now();
+        closeModal('sessionModal');
+        alert(`✅ Session gestartet! Fächer: ${topics.join(', ')}`);
+    } catch (err) { alert('Fehler: ' + err.message); }
+}
+
+function loadSessions() {
+    const cal = document.getElementById('sessionsCalendar');
+    if (cal) cal.innerHTML = '<p class="empty-state">Keine vergangenen Sessions.</p>';
+}
+
+// ── Settings ─────────────────────────────────────────────────────
+async function saveProfile() {
+    try {
+        const res = await fetch(`${API_URL}/user`, {
+            method:'PUT', headers:{'Content-Type':'application/json', Authorization:`Bearer ${state.token}`},
             body: JSON.stringify({
-                topicId,
-                subject: state.currentSubject,
-                quality: known ? 5 : 1
+                name:   document.getElementById('settingsName')?.value,
+                email:  document.getElementById('settingsEmail')?.value,
+                school: document.getElementById('settingsSchool')?.value,
+                kurs:   state.kurs
             })
         });
-        
-        if (res.ok) {
-            alert(known ? '✅ Gespeichert!' : '📝 Wird wiederholt');
-            if (state.currentSubject) loadTopics(state.currentSubject);
-        }
-    } catch (err) {
-        alert('Fehler beim Speichern');
-    }
+        state.user = await res.json();
+        alert('✅ Profil gespeichert!');
+    } catch (err) { alert('Fehler: ' + err.message); }
+}
+
+function exportData() {
+    const blob = new Blob([JSON.stringify({ user: state.user, progress: state.progress, ts: new Date().toISOString() }, null, 2)], { type:'application/json' });
+    const a = Object.assign(document.createElement('a'), { href: URL.createObjectURL(blob), download: `abitursn-export-${new Date().toISOString().split('T')[0]}.json` });
+    a.click();
+}
+
+function deleteAccount() { if (confirm('⚠️ Konto wirklich löschen? Alle Daten gehen verloren!')) logout(); }
+
+function createCustomTopic() {
+    const title = document.getElementById('customTopicTitle')?.value;
+    if (!title) { alert('Bitte Thema eingeben'); return; }
+    const r = document.getElementById('customTopicResult');
+    if (r) { r.style.display = 'block'; r.innerHTML = `<div class="card" style="background:var(--bg-dark);margin-top:1rem"><h4>${escHtml(title)}</h4><p>${escHtml(document.getElementById('customTopicDesc')?.value||'')}</p></div>`; }
+}
+
+function updateSettingDisplay(id, val) { setText(id, val + ' Min'); }
+
+// ── Helpers ───────────────────────────────────────────────────────
+function setText(id, val) { const el = document.getElementById(id); if (el) el.textContent = val; }
+function escHtml(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function fmtAI(t) {
+    return escHtml(t)
+        .replace(/\*\*(.*?)\*\*/g,'<strong>$1</strong>')
+        .replace(/`([^`]+)`/g,'<code>$1</code>')
+        .replace(/\n\n/g,'</p><p>').replace(/\n/g,'<br>');
 }
